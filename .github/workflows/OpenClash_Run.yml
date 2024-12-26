@@ -1,0 +1,108 @@
+name: 制作 OpenClash Run
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Create OpenClash & openclash directory for git & ipk
+        run: mkdir -p OpenClash openclash-x86 openclash-a53
+        
+      - name: Checkout package branch to OpenClash directory
+        uses: actions/checkout@v4
+        with:
+          repository: vernesong/OpenClash
+          path: OpenClash
+          ref: package
+          
+      - name: Copy latest openclash IPK to openclash directory
+        run: |
+          cp OpenClash/master/*.ipk openclash-x86
+          cp OpenClash/master/*.ipk openclash-a53
+
+      - name: Get version info
+        id: extract_version
+        run: |
+          first_line=$(head -n 1 OpenClash/master/version)
+          echo "version=$first_line" >> $GITHUB_ENV
+
+      - name: Create Meta directory for git
+        run: mkdir Meta
+      
+      - name: Checkout core branch to Meta directory
+        uses: actions/checkout@v4
+        with:
+          repository: vernesong/OpenClash
+          path: Meta
+          ref: core
+      
+      - name: list all cores on core branch
+        run: ls Meta/master/meta
+
+      - name: Copy latest meta core to openclash directory
+        run: |
+          tar -xzvf Meta/master/meta/clash-linux-amd64.tar.gz -C openclash-x86
+          tar -xzvf Meta/master/meta/clash-linux-arm64.tar.gz -C openclash-a53
+          mv openclash-x86/clash openclash-x86/clash_meta
+          mv openclash-a53/clash openclash-a53/clash_meta
+          ls openclash-x86
+          ls openclash-a53
+
+      - name: Create install.sh script save to openclash directory
+        run: |
+          cat << 'EOF' > openclash-x86/install.sh
+          opkg update
+          if [ $? -ne 0 ]; then
+              echo "update failed。"
+              exit 1
+          fi
+          opkg install *.ipk || exit 1
+          mv clash_meta /etc/openclash/core/
+          sleep 10s
+          ifconfig br-lan > /dev/null 2>&1
+          if [ $? -ne 0 ]; then
+              echo "接口错误，重启网络。"
+              /etc/init.d/network restart
+              echo "重启完毕"
+              exit 0
+          fi
+          EOF
+          chmod +x openclash-x86/install.sh
+          cp openclash-x86/install.sh openclash-a53/install.sh
+          chmod +x openclash-a53/install.sh
+
+      - name: Clone makeself repository for self-extracting installer
+        run: | 
+          git clone https://github.com/megastep/makeself.git
+
+      
+      - name: move openclash directory to makeself & create run
+        run: |
+          mv openclash-x86 makeself/
+          mv openclash-a53 makeself/
+          cd makeself
+          ./makeself.sh openclash-x86/ openclash-x86-64-${{ env.version }}.run "by github action" ./install.sh
+          ./makeself.sh openclash-a53/ openclash-aarch64_cortex-a53-${{ env.version }}.run "by github action" ./install.sh
+
+      - name: Generate new tag & release
+        uses: softprops/action-gh-release@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.version }}
+          target_commitish: ${{ github.ref_name }}
+          prerelease: false
+          body: "![Github](https://img.shields.io/badge/OpenClash.run-123456?logo=github&logoColor=fff&labelColor=red&style=for-the-badge) [![Github](https://img.shields.io/badge/国内加速站下载-FC7C0D?logo=github&logoColor=fff&labelColor=000&style=for-the-badge)](https://wkdaily.cpolar.top/archives/1) ![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/wukongdaily/RunFilesBuilder/${{ env.version }}/total?style=for-the-badge&labelColor=black&color=%2325c2a0)"
+
+      - name: Upload run files as release assets
+        uses: softprops/action-gh-release@v2.1.0
+        with:
+          tag_name: ${{ env.version }}
+          name: "OpenClash-${{ env.version }}"
+          files: makeself/*.run
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
