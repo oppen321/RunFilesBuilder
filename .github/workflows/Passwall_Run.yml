@@ -1,4 +1,4 @@
-name: Make Passwall run files
+name: 制作 Passwall Run
 
 on:
   workflow_dispatch:
