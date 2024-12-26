@@ -90,7 +90,7 @@ jobs:
       - name: Generate new tag & release
         uses: softprops/action-gh-release@master
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.TOKEN_OPPEN321 }}
         with:
           tag_name: ${{ env.version }}
           target_commitish: ${{ github.ref_name }}
