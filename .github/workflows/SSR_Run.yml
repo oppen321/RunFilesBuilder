@@ -1,4 +1,4 @@
-name: ShadowsocksPlus+ Run
+name: 制作 ShadowsocksPlus+ Run
 
 on:
   workflow_dispatch:
