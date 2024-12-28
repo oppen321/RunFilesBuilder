@@ -1,0 +1,119 @@
+name: 制作 Mihomo Run
+
+on:
+  workflow_dispatch:
+ # schedule:
+#    - cron: '0 */12 * * *'  # 每12小时检查一次更新
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        version: ['23.05', '24.10', 'SNAPSHOT']
+
+    steps:
+      - name: Get latest release version
+        id: get_version
+        run: |
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/morytyann/OpenWrt-mihomo/releases/latest | jq -r .tag_name)
+          echo "version=${LATEST_VERSION}" >> $GITHUB_ENV
+          echo "Latest version: ${LATEST_VERSION}"
+
+      - name: Create work directories
+        run: |
+          mkdir -p mihomo-x86-${{ matrix.version }} mihomo-a53-${{ matrix.version }}
+
+      - name: Download and extract x86_64 package
+        run: |
+          wget -O x86.tar.gz https://github.com/morytyann/OpenWrt-mihomo/releases/download/${{ env.version }}/mihomo_x86_64-openwrt-${{ matrix.version }}.tar.gz
+          tar xzf x86.tar.gz -C mihomo-x86-${{ matrix.version }}
+          rm x86.tar.gz
+
+      - name: Download and extract arm64 package
+        run: |
+          wget -O arm64.tar.gz https://github.com/morytyann/OpenWrt-mihomo/releases/download/${{ env.version }}/mihomo_aarch64_cortex-a53-openwrt-${{ matrix.version }}.tar.gz
+          tar xzf arm64.tar.gz -C mihomo-a53-${{ matrix.version }}
+          rm arm64.tar.gz
+
+      - name: Create install.sh script for x86_64
+        run: |
+          cat << 'EOF' > mihomo-x86-${{ matrix.version }}/install.sh
+          #!/bin/sh
+          
+          # 创建目录
+          mkdir -p /etc/mihomo
+          
+          # 复制文件
+          cp -f mihomo /usr/bin/
+          chmod +x /usr/bin/mihomo
+          
+          # 复制配置文件（如果不存在）
+          if [ ! -f /etc/mihomo/config.yaml ]; then
+              cp -f config.yaml /etc/mihomo/
+          fi
+          
+          echo "Mihomo 安装完成!"
+          echo "请修改 /etc/mihomo/config.yaml 配置文件"
+          EOF
+          
+          chmod +x mihomo-x86-${{ matrix.version }}/install.sh
+
+      - name: Create install.sh script for arm64
+        run: |
+          cp mihomo-x86-${{ matrix.version }}/install.sh mihomo-a53-${{ matrix.version }}/install.sh
+          chmod +x mihomo-a53-${{ matrix.version }}/install.sh
+
+      - name: Clone makeself repository
+        run: git clone https://github.com/megastep/makeself.git
+
+      - name: Create self-extracting installers
+        run: |
+          mv mihomo-x86-${{ matrix.version }} makeself/
+          mv mihomo-a53-${{ matrix.version }} makeself/
+          cd makeself
+          ./makeself.sh mihomo-x86-${{ matrix.version }}/ mihomo-x86-64-${{ matrix.version }}-${{ env.version }}.run "Mihomo Installer" ./install.sh
+          ./makeself.sh mihomo-a53-${{ matrix.version }}/ mihomo-aarch64_cortex-a53-${{ matrix.version }}-${{ env.version }}.run "Mihomo Installer" ./install.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: mihomo-${{ matrix.version }}-installers
+          path: makeself/*.run
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Get latest release version
+        run: |
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/morytyann/OpenWrt-mihomo/releases/latest | jq -r .tag_name)
+          echo "version=${LATEST_VERSION}" >> $GITHUB_ENV
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.version }}
+          name: "Mihomo-${{ env.version }}"
+          body: |
+            Mihomo 安装包 ${{ env.version }}
+            
+            支持版本：
+            - OpenWrt 23.05
+            - OpenWrt 24.10
+            - OpenWrt SNAPSHOT
+            
+            支持架构：
+            - x86_64
+            - aarch64_cortex-a53
+          files: artifacts/**/*.run
+          draft: false
+          prerelease: false
