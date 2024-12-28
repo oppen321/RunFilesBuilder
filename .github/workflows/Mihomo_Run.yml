@@ -2,7 +2,7 @@ name: 制作 Mihomo Run
 
 on:
   workflow_dispatch:
- # schedule:
+#  schedule:
 #    - cron: '0 */12 * * *'  # 每12小时检查一次更新
 
 jobs:
@@ -10,7 +10,16 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        version: ['23.05', '24.10', 'SNAPSHOT']
+        include:
+          - version: '23.05'
+            x86_filename: 'mihomo_x86_64-openwrt-23.05.tar.gz'
+            arm_filename: 'mihomo_aarch64_cortex-a53-openwrt-23.05.tar.gz'
+          - version: '24.10'
+            x86_filename: 'mihomo_x86_64-openwrt-24.10.tar.gz'
+            arm_filename: 'mihomo_aarch64_cortex-a53-openwrt-24.10.tar.gz'
+          - version: 'SNAPSHOT'
+            x86_filename: 'mihomo_x86_64-SNAPSHOT.tar.gz'
+            arm_filename: 'mihomo_aarch64_cortex-a53-SNAPSHOT.tar.gz'
 
     steps:
       - name: Get latest release version
@@ -26,13 +35,13 @@ jobs:
 
       - name: Download and extract x86_64 package
         run: |
-          wget -O x86.tar.gz https://github.com/morytyann/OpenWrt-mihomo/releases/download/${{ env.version }}/mihomo_x86_64-openwrt-${{ matrix.version }}.tar.gz
+          wget -O x86.tar.gz https://github.com/morytyann/OpenWrt-mihomo/releases/download/${{ env.version }}/${{ matrix.x86_filename }}
           tar xzf x86.tar.gz -C mihomo-x86-${{ matrix.version }}
           rm x86.tar.gz
 
       - name: Download and extract arm64 package
         run: |
-          wget -O arm64.tar.gz https://github.com/morytyann/OpenWrt-mihomo/releases/download/${{ env.version }}/mihomo_aarch64_cortex-a53-openwrt-${{ matrix.version }}.tar.gz
+          wget -O arm64.tar.gz https://github.com/morytyann/OpenWrt-mihomo/releases/download/${{ env.version }}/${{ matrix.arm_filename }}
           tar xzf arm64.tar.gz -C mihomo-a53-${{ matrix.version }}
           rm arm64.tar.gz
 
