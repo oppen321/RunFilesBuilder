@@ -1,0 +1,95 @@
+name: 制作 MosDNS Run
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */12 * * *'  # 每12小时检查一次更新
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Get latest release version
+        id: get_version
+        run: |
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/sbwml/luci-app-mosdns/releases/latest | jq -r .tag_name)
+          echo "version=${LATEST_VERSION}" >> $GITHUB_ENV
+          echo "Latest version: ${LATEST_VERSION}"
+
+      - name: Create work directories
+        run: |
+          mkdir -p mosdns-x86 mosdns-a53
+          
+      - name: Download common packages
+        run: |
+          # 下载公共包
+          wget -P mosdns-x86 https://github.com/sbwml/luci-app-mosdns/releases/download/${{ env.version }}/luci-app-mosdns_1.6.8_all.ipk
+          wget -P mosdns-x86 https://github.com/sbwml/luci-app-mosdns/releases/download/${{ env.version }}/luci-i18n-mosdns-zh-cn_git-24.246.09619-49e5a0d_all.ipk
+          wget -P mosdns-x86 https://github.com/sbwml/luci-app-mosdns/releases/download/${{ env.version }}/v2ray-geoip_2024-12-18-1_all.ipk
+          wget -P mosdns-x86 https://github.com/sbwml/luci-app-mosdns/releases/download/${{ env.version }}/v2ray-geosite_2024-12-18-1_all.ipk
+          
+          # 复制公共包到 arm64 目录
+          cp mosdns-x86/*.ipk mosdns-a53/
+
+      - name: Download x86_64 specific packages
+        run: |
+          wget -P mosdns-x86 https://github.com/sbwml/luci-app-mosdns/releases/download/${{ env.version }}/mosdns_5.3.3-3_x86_64.ipk
+          wget -P mosdns-x86 https://github.com/sbwml/luci-app-mosdns/releases/download/${{ env.version }}/v2dat_2022-12-15-47b8ee51-1_x86_64.ipk
+
+      - name: Download arm64 specific packages
+        run: |
+          wget -P mosdns-a53 https://github.com/sbwml/luci-app-mosdns/releases/download/${{ env.version }}/mosdns_5.3.3-3_aarch64_cortex-a53.ipk
+          wget -P mosdns-a53 https://github.com/sbwml/luci-app-mosdns/releases/download/${{ env.version }}/v2dat_2022-12-15-47b8ee51-1_aarch64_cortex-a53.ipk
+
+      - name: Create install.sh script
+        run: |
+          cat << 'EOF' > mosdns-x86/install.sh
+          #!/bin/sh
+          
+          opkg update
+          if [ $? -ne 0 ]; then
+              echo "更新失败"
+              exit 1
+          fi
+          
+          opkg install *.ipk
+          if [ $? -ne 0 ]; then
+              echo "安装失败"
+              exit 1
+          fi
+          
+          echo "MosDNS 安装完成!"
+          EOF
+          
+          chmod +x mosdns-x86/install.sh
+          cp mosdns-x86/install.sh mosdns-a53/install.sh
+          chmod +x mosdns-a53/install.sh
+
+      - name: Clone makeself repository
+        run: git clone https://github.com/megastep/makeself.git
+
+      - name: Create self-extracting installers
+        run: |
+          mv mosdns-x86 makeself/
+          mv mosdns-a53 makeself/
+          cd makeself
+          ./makeself.sh mosdns-x86/ mosdns-x86-64-${{ env.version }}.run "MosDNS Installer" ./install.sh
+          ./makeself.sh mosdns-a53/ mosdns-aarch64_cortex-a53-${{ env.version }}.run "MosDNS Installer" ./install.sh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.version }}
+          name: "MosDNS-${{ env.version }}"
+          body: |
+            MosDNS 安装包 ${{ env.version }}
+            
+            - x86_64 版本
+            - aarch64_cortex-a53 版本
+          files: |
+            makeself/*.run
+          draft: false
+          prerelease: false
