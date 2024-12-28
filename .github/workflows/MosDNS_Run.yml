@@ -2,8 +2,8 @@ name: 制作 MosDNS Run
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 */12 * * *'  # 每12小时检查一次更新
+#  schedule:
+#    - cron: '0 */12 * * *'  # 每12小时检查一次更新
 
 jobs:
   build:
